@@ -55,7 +55,7 @@ func (w *Worker) Start() error {
 	// 等待别的worker注册成功
 	time.Sleep(time.Millisecond * 20)
 
-	// asure mate is registered
+	// assure mate is registered
 	for {
 		// 检查节点是否就位
 		registeredCount := 0
@@ -76,7 +76,13 @@ func (w *Worker) Start() error {
 	}
 
 	// 抢占式选举 最快选举好的直接广播给别人 让别人无条件服从
-	w.ElectMaster()
+	masterId := w.FindFollowedMaster()
+	if masterId != "" {
+		log.Printf("%s will follow %s from existing cluster", w.Id, masterId)
+		w.Follow(masterId)
+	} else {
+		w.ElectMaster()
+	}
 
 	for {
 		// elect
@@ -201,6 +207,23 @@ func (w *Worker) ElectMaster() {
 
 	w.Follow(votedMasterId)
 	//w.VotedMasterId = ""
+}
+
+func (w *Worker) FindFollowedMaster() string {
+	masterMap := make(map[string]int, 0)
+	for mateId := range w.ClusterMembers {
+		if w.ClusterMembers[mateId].Active {
+			masterMap[mateId]++
+		}
+	}
+
+	for masterId, followerNum := range masterMap {
+		if followerNum>=len(w.ClusterMembers)/2 {
+			return masterId
+		}
+	}
+
+	return ""
 }
 
 // useful?
