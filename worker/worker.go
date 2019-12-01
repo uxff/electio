@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-const RegisterTimeoutSec = 5  // 已注册的超时检测
-const RegisterIntervalSec = 2 // 作为worker或master注册间隔
+const RegisterTimeoutSec = 2  // 已注册的超时检测
+const RegisterIntervalSec = 1 // 作为worker或master注册间隔
 
 type Worker struct {
 	Id             string // from redis incr? // uniq in cluster, different from other nodes
@@ -94,6 +94,13 @@ func (w *Worker) Start() error {
 		// 来自自身监控master
 		case <-w.masterGoneChan:
 			log.Printf("will elect when master %s timeout", w.MasterId)
+
+			// 清掉已经注册的master 需要重新注册
+			w.MasterId = ""
+			for mateId := range w.ClusterMembers {
+				w.ClusterMembers[mateId].MasterId = ""
+			}
+
 			w.ElectMaster()
 
 			// 来自队友通知要强制选举 需要延迟回复吗？
@@ -241,7 +248,7 @@ func (w *Worker) PerformMaster() {
 
 	log.Printf("worker %s will perform master", w.Id)
 
-	tick := time.NewTicker(time.Second)
+	tick := time.NewTicker(time.Second * RegisterIntervalSec)
 	defer tick.Stop()
 	for {
 		select {
