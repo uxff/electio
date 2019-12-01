@@ -69,7 +69,7 @@ func (w *Worker) Start() error {
 		}
 
 		// 有半数节点就位就可以继续了
-		if registeredCount >= len(w.ClusterMembers)/2 {
+		if registeredCount > len(w.ClusterMembers)/2 {
 			log.Printf("%d/%d mates has been registered", registeredCount, len(w.ClusterMembers))
 			break
 		}
