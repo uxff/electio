@@ -1,10 +1,19 @@
 package worker
 
 import (
+	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"log"
 	"strings"
 )
+
+type PingRes struct {
+	Code int
+	Msg string
+	WorkerId string
+	MasterId string
+	Members map[string]*Worker
+}
 
 func (w *Worker) ServePingable() error {
 
@@ -145,22 +154,31 @@ func (w *Worker) ServePingable() error {
 }
 
 func (w *Worker) jsonError(c *gin.Context, msg string, data interface{}) {
-	c.JSON(200, gin.H{
-		"code":     1,
-		"msg":      msg,
-		"workerId": w.Id,
-		"members":  w.ClusterMembers,
-		"data":     data,
-		"masterId": w.MasterId,
+	c.JSON(200, PingRes{
+		Code:     1,
+		Msg:      msg,
+		WorkerId: w.Id,
+		MasterId: w.MasterId,
+		Members:  w.ClusterMembers,
 	})
 }
 func (w *Worker) jsonOk(c *gin.Context, data interface{}) {
-	c.JSON(200, gin.H{
-		"code":     0,
-		"msg":      "ok",
-		"workerId": w.Id,
-		"members":  w.ClusterMembers,
-		"data":     data,
-		"masterId": w.MasterId,
+	c.JSON(200, PingRes{
+		Code:     1,
+		Msg:      "ok",
+		WorkerId: w.Id,
+		MasterId: w.MasterId,
+		Members:  w.ClusterMembers,
 	})
 }
+
+func newPingRes(buf []byte) *PingRes {
+	res := &PingRes{}
+	err := json.Unmarshal(buf, res)
+	if err != nil {
+		res.Msg = "Unmarshall Error:"+err.Error()
+		res.Code = 11
+	}
+	return res
+}
+

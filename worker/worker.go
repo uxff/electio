@@ -3,8 +3,10 @@ package worker
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"sort"
 	"sync"
 	"time"
@@ -257,27 +259,50 @@ func (w *Worker) FindFollowedMaster() string {
 
 func (w *Worker) PingNode(workerId string) error {
 
+	res := w.MessageTo("ping", workerId, nil)
+
+	if res.Code != 0 {
+		log.Printf("ping failed:%v", res)
+		return fmt.Errorf(res.Msg)
+	}
+
+	w.RegisterIn(workerId, w.ClusterMembers[workerId].MasterId)
+	return nil
+}
+
+func (w *Worker) MessageTo(method string, workerId string, val url.Values) *PingRes {
+	res := &PingRes{}
+
 	target := w.ClusterMembers[workerId]
 
 	if target == nil {
-		return fmt.Errorf("worker(%s) has no target when pingNode(%s)", w.Id, workerId)
+		res.Msg = fmt.Sprintf("worker(%s) has no target when pingNode(%s)", w.Id, workerId)
+		res.Code = 11
+		return res
 	}
 
-	targetUrl := target.ServiceAddr
-	if len(targetUrl) <= 4 {
-		return fmt.Errorf("worker(%s) ping target(%s)'s serviceAddr illegal", w.Id, target.Id)
-	}
-	if targetUrl[:4] != "http" {
-		targetUrl = "http://" + targetUrl + "/ping?fromId=" + w.Id + "&masterId=" + w.MasterId
-	}
-
-	_, err := http.Get(targetUrl)
-
-	if err == nil {
-		w.RegisterIn(workerId, w.ClusterMembers[workerId].MasterId)
+	targetUrl := target.genServeUrl("ping", val)
+	resp, err := http.Get(targetUrl)
+	if err != nil {
+		res.Msg = "Http Error:"+err.Error()
+		res.Code = 13
+		return res
 	}
 
-	return err
+	buf, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		res.Msg = "Read Response Error:"+err.Error()
+		res.Code = 14
+		return res
+	}
+
+	err = json.Unmarshal(buf, res)
+	if err != nil {
+		res.Msg = "Unmarshall Error:"+err.Error()
+		res.Code = 15
+	}
+
+	return res
 }
 
 //
@@ -288,27 +313,14 @@ func (w *Worker) ToString() string {
 
 func (w *Worker) DemandFollow(mateId string, masterId string) error {
 
-	target := w.ClusterMembers[mateId]
+	res := w.MessageTo("follow", mateId, nil)
 
-	if target == nil {
-		return fmt.Errorf("worker(%s) has no target when demandFollow(%s)", w.Id, masterId)
+	if res.Code != 0 {
+		log.Printf("i:%s demand:%s follow:%s error:%v", w.Id, mateId, masterId, res.Msg)
+		return fmt.Errorf(res.Msg)
 	}
 
-	targetUrl := target.ServiceAddr
-	if len(targetUrl) <= 4 {
-		return fmt.Errorf("worker(%s) demand target(%s)'s serviceAddr illegal", w.Id, target.Id)
-	}
-	if targetUrl[:4] != "http" {
-		targetUrl = "http://" + targetUrl + "/follow?fromId=" + w.Id + "&masterId=" + masterId
-	}
-
-	_, err := http.Get(targetUrl)
-
-	if err != nil {
-		log.Printf("worker(%s) demand mate(%s) follow(%s)", w.Id, target.Id, masterId)
-	}
-
-	return err
+	return nil
 }
 
 //func (w *Worker) DemandEraseMaster(mate *Worker) {
@@ -369,4 +381,19 @@ func (w *Worker) RegisterIn(mateId string, masterId string) {
 	w.ClusterMembers[mateId].LastRegistered = time.Now().Unix()
 	w.ClusterMembers[mateId].MasterId = masterId
 	w.ClusterMembers[mateId].Active = true
+}
+
+func (w *Worker) genServeUrl(method string, params url.Values) string {
+	if params == nil {
+		params = make(url.Values)
+	}
+	params.Set("fromId", w.Id)
+	params.Set("masterId", w.MasterId)
+	u := url.URL{
+		Scheme:"http",
+		Host: w.ServiceAddr,
+		Path:"/"+method,
+		RawQuery: params.Encode(),
+	}
+	return u.String()
 }
