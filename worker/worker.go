@@ -53,6 +53,7 @@ func (w *Worker) Start() error {
 	log.Printf("worker %s will start", w.Id)
 
 	go w.KeepRegistered()
+	go w.PerformMaster()
 
 	// 等待别的worker注册成功
 	time.Sleep(time.Millisecond * 20)
@@ -90,16 +91,23 @@ func (w *Worker) Start() error {
 		// elect
 		select {
 
+		// 来自自身监控master
 		case <-w.masterGoneChan:
 			log.Printf("will elect when master %s timeout", w.MasterId)
 			w.ElectMaster()
+
+			// 来自队友通知要强制选举 需要延迟回复吗？
+		//case <-w.masterShift:
 
 		//case newMasterId := <-w.masterChangeChan:
 		//	log.Printf("master changed from:%s to %s", w.MasterId, newMasterId)
 		//	w.Follow(newMasterId)
 
-		case <-w.quitChan:
-			log.Printf("quit in start while waiting masterGone")
+		case _, ok:=<-w.quitChan:
+			if !ok {
+				log.Printf("quitChan is closed in start while Start()")
+			}
+			log.Printf("recv quit signal, than stop Start()")
 			return fmt.Errorf("worker(%s) master(%s) will quit", w.Id, w.MasterId)
 		}
 	}
@@ -229,19 +237,30 @@ func (w *Worker) FindFollowedMaster() string {
 }
 
 // useful?
-//func (w *Worker) PerformMaster() {
-//	if !w.isMaster() {
-//		return
-//	}
-//
-//	log.Printf("worker %s will perform master", w.Id)
-//
-//	for _, mate := range w.ClusterMembers {
-//		// if timeout?
-//		go w.DemandFollow(mate) // ??
-//	}
-//
-//}
+func (w *Worker) PerformMaster() {
+
+	log.Printf("worker %s will perform master", w.Id)
+
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-tick.C:
+			if w.MasterId == w.Id {
+				for mateId := range w.ClusterMembers {
+					if mateId != w.Id && w.ClusterMembers[mateId].MasterId != w.MasterId {
+						// if timeout?
+						log.Printf("demand %s to follow me %s", mateId, w.MasterId)
+						go w.DemandFollow(mateId, w.MasterId)
+					}
+				}
+			}
+		case <-w.quitChan:
+			log.Printf("recv quit signal, than stop PerformMaster")
+			return
+		}
+	}
+}
 
 // 在命令行主动要求的时候调用
 //func (w *Worker) EraseRegisteredMaster() {
@@ -257,31 +276,45 @@ func (w *Worker) FindFollowedMaster() string {
 //	}
 //}
 
-func (w *Worker) PingNode(workerId string) error {
+func (w *Worker) PingNode(workerId string) *PingRes {
+	if workerId == w.Id {
+		w.RegisterIn(workerId, w.MasterId)
+		return &PingRes{Code:0,WorkerId:w.Id,MasterId:w.MasterId,Members:w.ClusterMembers}
+	}
 
 	res := w.MessageTo("ping", workerId, nil)
 
 	if res.Code != 0 {
 		log.Printf("ping failed:%v", res)
-		return fmt.Errorf(res.Msg)
+		return res
 	}
 
-	w.RegisterIn(workerId, w.ClusterMembers[workerId].MasterId)
-	return nil
+	w.RegisterIn(workerId, res.MasterId)
+
+	// todo 如果收到的mate.MasterId和自己的不一样怎么办？
+
+	return res
 }
 
-func (w *Worker) MessageTo(method string, workerId string, val url.Values) *PingRes {
+func (w *Worker) MessageTo(method string, targetId string, val url.Values) *PingRes {
 	res := &PingRes{}
 
-	target := w.ClusterMembers[workerId]
+	target := w.ClusterMembers[targetId]
 
 	if target == nil {
-		res.Msg = fmt.Sprintf("worker(%s) has no target when pingNode(%s)", w.Id, workerId)
+		res.Msg = fmt.Sprintf("worker(%s) has no target when pingNode(%s)", w.Id, targetId)
 		res.Code = 11
 		return res
 	}
 
-	targetUrl := target.genServeUrl("ping", val)
+	if val == nil {
+		val = make(url.Values)
+	}
+
+	val.Set("fromId", w.Id)
+	val.Set("masterId", w.MasterId)
+
+	targetUrl := target.genServeUrl(method, val)
 	resp, err := http.Get(targetUrl)
 	if err != nil {
 		res.Msg = "Http Error:"+err.Error()
@@ -290,6 +323,7 @@ func (w *Worker) MessageTo(method string, workerId string, val url.Values) *Ping
 	}
 
 	buf, err := ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
 	if err != nil {
 		res.Msg = "Read Response Error:"+err.Error()
 		res.Code = 14
@@ -372,23 +406,18 @@ func (w *Worker) AddMates(mateServiceAddrs []string) {
 	}
 }
 
-func (w *Worker) RegisterIn(mateId string, masterId string) {
+func (w *Worker) RegisterIn(mateId string, masterIdOfMate string) {
 	if _, ok := w.ClusterMembers[mateId]; !ok {
 		log.Printf("when %s register in, not exist, my members:%+v", mateId, w.ClusterMembers)
 		return
 	}
 
 	w.ClusterMembers[mateId].LastRegistered = time.Now().Unix()
-	w.ClusterMembers[mateId].MasterId = masterId
+	w.ClusterMembers[mateId].MasterId = masterIdOfMate
 	w.ClusterMembers[mateId].Active = true
 }
 
 func (w *Worker) genServeUrl(method string, params url.Values) string {
-	if params == nil {
-		params = make(url.Values)
-	}
-	params.Set("fromId", w.Id)
-	params.Set("masterId", w.MasterId)
 	u := url.URL{
 		Scheme:"http",
 		Host: w.ServiceAddr,

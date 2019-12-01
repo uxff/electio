@@ -53,6 +53,7 @@ func main() {
 	select {
 	case sig := <-ch:
 		log.Printf("receive signal '%v', server will exit", sig)
+		workerNode.Quit()
 	}
 
 	os.Exit(1)
