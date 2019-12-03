@@ -30,3 +30,12 @@ type PingRes struct {
 }
 
 ```
+
+### 常量配置
+```
+// 已注册的节点，检测其超时时间。普通节点超时后标记为Inactive,master超时后会出发选举。
+const RegisterTimeoutSec = 2  
+
+// 作为worker向同伴周期性注册的时间间隔
+const RegisterIntervalSec = 1 
+```
