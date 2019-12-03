@@ -58,6 +58,8 @@ func (w *Worker) Start() error {
 	// 等待别的worker注册成功
 	time.Sleep(time.Millisecond * 20)
 
+	log.Printf("waiting mates registered in")
+	//log.Printf("only %d/%d mates has been registered, continuing checking", registeredCount, len(w.ClusterMembers))
 	// assure mate is registered
 	for {
 		// 检查节点是否就位
@@ -74,7 +76,7 @@ func (w *Worker) Start() error {
 			break
 		}
 
-		log.Printf("only %d/%d mates has been registered, continuing checking", registeredCount, len(w.ClusterMembers))
+		//log.Printf("only %d/%d mates has been registered, continuing checking", registeredCount, len(w.ClusterMembers))
 		time.Sleep(time.Millisecond * 100)
 	}
 
