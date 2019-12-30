@@ -3,7 +3,7 @@ package dependentworker
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/uxff/electio/dependentworker/repo"
+	"github.com/uxff/electio/dependentworker/repoif"
 	"log"
 	"net/http"
 	"sort"
@@ -26,12 +26,12 @@ type Worker struct {
 
 	ClusterMembers map[string]*Worker `json:"-"`
 
-	repo               repo.Repo
+	repo               repoif.Repo
 	clusterAssist      *clusterHelper
 	keepRegisterStatus int
 }
 
-func NewWorker(serviceAddr string, clusterId string) *Worker {
+func NewWorker(serviceAddr string, clusterId string, re repoif.Repo) *Worker {
 	w := &Worker{}
 	w.ServiceAddr = serviceAddr
 	w.ClusterId = clusterId
@@ -41,6 +41,7 @@ func NewWorker(serviceAddr string, clusterId string) *Worker {
 	// redis must be prepared already
 
 	w.Id = w.clusterAssist.genMemberHash(w.ServiceAddr)
+	w.repo = re
 
 	return w
 }
@@ -111,6 +112,13 @@ func (w *Worker) Register() {
 	// keep register master if one is master
 	if w.IsMaster() {
 		w.repo.Set(w.Id, w.ToString())
+	}
+}
+
+func (w *Worker) AddMates(mateServiceAddrs []string) {
+	for _, node := range mateServiceAddrs {
+		mate := NewWorker(node, w.ClusterId, w.repo)
+		w.ClusterMembers[mate.Id] = mate
 	}
 }
 
@@ -291,4 +299,10 @@ func (w *Worker) ToString() string {
 func (w *Worker) IsMaster() bool {
 	return w.Id == w.MasterId
 }
+
+func (w *Worker) Quit()  {
+	return
+}
+
+
 

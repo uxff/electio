@@ -71,14 +71,26 @@ func (r *RedisRepo) Get(key string) string {
 
 	return v
 }
+
 func (r *RedisRepo) Set(key, val string) {
 	// todo expire
 	conn := r.redisPool[r.storeDsn].Get()
-	v, err := redis.String(conn.Do("SET", key, val))
+	_, err := redis.String(conn.Do("SET", key, val))
 	if err != nil {
 		log.Errorf("todo ")
 		//return ""
 	}
 
 	//return v
+}
+
+func (r *RedisRepo) MapGet(key, subKey string) string {
+	return ""
+}
+
+func (r *RedisRepo) MapSet(key, subKey, val string) {
+}
+
+func (r *RedisRepo) MapGetAll(key string) map[string]string {
+	return nil
 }

@@ -1,4 +1,4 @@
-package repo
+package repoif
 
 type Repo interface {
 	// dsn expected: server=1.1.1.1 port=1009 password=232423
