@@ -29,7 +29,7 @@ func (w *Worker) ServePingable() error {
 
 		nodesArr := strings.Split(nodesStr, ",")
 		for _, node := range nodesArr {
-			mate := NewWorker(node, w.ClusterId)
+			mate := NewWorker(node, w.ClusterId, w.repo)
 			w.ClusterMembers[mate.Id] = mate
 		}
 	})
