@@ -1,4 +1,4 @@
-package worker
+package dependentworker
 
 import (
 	"github.com/gin-gonic/gin"
@@ -29,7 +29,7 @@ func (w *Worker) ServePingable() error {
 
 		nodesArr := strings.Split(nodesStr, ",")
 		for _, node := range nodesArr {
-			mate := NewWorker(node, w.ClusterId, w.ClusterSalt)
+			mate := NewWorker(node, w.ClusterId)
 			w.ClusterMembers[mate.Id] = mate
 		}
 	})

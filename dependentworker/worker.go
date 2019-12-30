@@ -1,4 +1,4 @@
-package worker
+package dependentworker
 
 import (
 	"encoding/json"
@@ -19,7 +19,6 @@ const PingMasterErrLimit = 2    // ping master 超过这个次数会重新选举
 type Worker struct {
 	Id          string // from redis incr? // uniq in cluster, different from other nodes
 	ClusterId   string
-	ClusterSalt string
 	ServiceAddr string // self addr of listen, must be addressable for other nodes
 	//Port           string // self port of listen, must be addressable for other nodes
 	MasterId       string
@@ -27,20 +26,17 @@ type Worker struct {
 
 	ClusterMembers map[string]*Worker `json:"-"`
 
-	//redisConn          *db.RdsConn
 	repo               repo.Repo
 	clusterAssist      *clusterHelper
 	keepRegisterStatus int
 }
 
-func NewWorker(serviceAddr string, clusterId string, clusterSalt string) *Worker {
+func NewWorker(serviceAddr string, clusterId string) *Worker {
 	w := &Worker{}
-	//w.redisConn, _ = envinit.GetRedisInst()
 	w.ServiceAddr = serviceAddr
 	w.ClusterId = clusterId
-	w.ClusterSalt = clusterSalt
 
-	w.clusterAssist = NewClusterHelper(w.ClusterId, w.ClusterSalt)
+	w.clusterAssist = NewClusterHelper(w.ClusterId)
 	w.ClusterMembers = make(map[string]*Worker, 0)
 	// redis must be prepared already
 
@@ -110,11 +106,11 @@ func (w *Worker) Start() error {
 func (w *Worker) Register() {
 	// 从redis注册id
 	w.LastRegistered = time.Now().Unix()
-	w.repo.MapSet(w.clusterAssist.genMembersKey(), w.clusterAssist.genMemberHash(w.ServiceAddr), w.ToString())
+	w.repo.MapSet(w.clusterAssist.genMembersKey(), w.Id, w.ToString())
 
 	// keep register master if one is master
 	if w.IsMaster() {
-		w.repo.Set(w.clusterAssist.genMasterIdKey(), w.ToString())
+		w.repo.Set(w.Id, w.ToString())
 	}
 }
 
@@ -147,7 +143,7 @@ func (w *Worker) KeepRegistered() {
 
 // 从内存种发现
 func (w *Worker) FindMaster() *Worker {
-	val := w.repo.Get(w.clusterAssist.genMasterIdKey())
+	val := w.repo.Get(w.Id)
 
 	if len(val) == 0 {
 		return nil
@@ -237,7 +233,7 @@ func (w *Worker) PerformMaster() {
 	log.Printf("worker %s will perform master", w.Id)
 
 	// register to master
-	w.repo.Set(w.clusterAssist.genMasterIdKey(), w.ToString())
+	w.repo.Set(w.Id, w.ToString())
 
 	// ping every mates
 	// order to every mates
@@ -246,7 +242,7 @@ func (w *Worker) PerformMaster() {
 func (w *Worker) EraseRegisteredMaster() {
 
 	// register to master
-	w.repo.Set(w.clusterAssist.genMasterIdKey(), "")
+	w.repo.Set(w.Id, "")
 }
 
 func (w *Worker) EraseRegisteredWorker(workerId string) {

@@ -1,23 +1,21 @@
-package worker
+package dependentworker
 
 import (
 	"crypto/md5"
 	"encoding/hex"
 )
 
-const regPreKey = "/myapp/"
+const regPreKey = "/mycluster/"
 const masterKey = "master"
 const membersKey = "workers"
 
 type clusterHelper struct {
-	clusterId   string
-	clusterSalt string
+	clusterId string
 }
 
-func NewClusterHelper(clusterId string, clusterSalt string) *clusterHelper {
+func NewClusterHelper(clusterId string) *clusterHelper {
 	return &clusterHelper{
-		clusterId,
-		clusterSalt,
+	clusterId,
 	}
 }
 
@@ -25,10 +23,10 @@ func (c *clusterHelper) genClusterKeyBase() string {
 	return regPreKey + c.clusterId + "/"
 }
 
-// 生成一个字符串key(比如redis key) 用于保存 worders
-func (c *clusterHelper) genMasterIdKey() string {
-	return c.genClusterKeyBase() + masterKey
-}
+//// 生成一个字符串key(比如redis key) 用于保存 workers
+//func (c *clusterHelper) genMasterIdKey() string {
+//	return c.genClusterKeyBase() + masterKey
+//}
 
 // 生成一个字符串key(比如redis key) 用于保存 worders
 func (c *clusterHelper) genMembersKey() string {
@@ -36,7 +34,7 @@ func (c *clusterHelper) genMembersKey() string {
 }
 
 func (c *clusterHelper) genMemberHash(memberId string) string {
-	s := memberId + "/" + c.clusterSalt
+	s := c.genClusterKeyBase() + memberId
 	h := md5.New()
 	h.Write([]byte(s))
 	return hex.EncodeToString(h.Sum(nil))
